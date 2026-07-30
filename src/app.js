@@ -23,6 +23,7 @@ import { auditLimiter } from "./concurrency/audit-limiter.js";
 const app = express();
 
 app.use(helmet());
+
 app.use(
   cors({
     origin:
@@ -30,11 +31,15 @@ app.use(
       "http://localhost:3000"
   })
 );
-app.use(express.json());
+
+app.use(
+  express.json({
+    limit: "10kb"
+  })
+);
+
 app.use(requestId);
 app.use(requestLogger);
-
-
 
 app.get("/health", (req, res) => {
 
@@ -55,13 +60,8 @@ app.post(
 
     try {
 
-      // GET URL FROM REQUEST
       const { url } = req.body;
-
-      // VALIDATE URL
       const validation = validateUrl(url);
-
-      // RETURN ERROR IF INVALID
 
       if (!validation.valid) {
 
@@ -76,10 +76,7 @@ app.post(
 
       }
 
-      // CREATE CACHE KEY
       const key = createCacheKey(validation.url);
-
-      // CHECK CACHE
       const cachedResult = getCachedAudit(key);
 
       if (cachedResult) {
@@ -93,95 +90,108 @@ app.post(
 
       }
 
-      // RUN AUDIT
-
       const result = await singleFlight(
         key,
+
         async () => {
 
           const cached = getCachedAudit(key);
 
           if (cached) {
+
             return {
               data: cached,
               cached: true
             };
+
           }
 
           await auditLimiter.acquire();
 
           try {
 
-            const auditResult = await auditUrl(validation.url);
+            const auditResult =
+              await auditUrl(validation.url);
 
-            setCachedAudit(key, auditResult);
+            setCachedAudit(
+              key,
+              auditResult
+            );
 
             return {
               data: auditResult,
               cached: false
             };
 
-    } finally {
+          } finally {
+            auditLimiter.release();
 
-      auditLimiter.release();
+          }
+
+        }
+      );
+
+      return res.status(200).json({
+        ok: true,
+        requestId: req.id,
+        cached: result.cached,
+        data: result.data
+      });
+
+
+    } catch (error) {
+
+
+      if (error.message === "BLOCKED_TARGET") {
+
+        return res.status(403).json({
+          ok: false,
+          requestId: req.id,
+          error: {
+            code: "BLOCKED_TARGET",
+            message:
+              "This URL points to a network location that cannot be audited."
+          }
+        });
+
+      }
+
+      if (error.message === "AUDIT_TIMEOUT") {
+
+        return res.status(504).json({
+          ok: false,
+          requestId: req.id,
+          error: {
+            code: "AUDIT_TIMEOUT",
+            message:
+              "The target website took too long to respond."
+          }
+        });
+
+      }
+
+      next(error);
 
     }
 
   }
 );
 
-// SAVE RESULT TO CACHE
 
-setCachedAudit(key, result);
+app.use((req, res) => {
 
-// RETURN SUCCESS
+  return res.status(404).json({
+    ok: false,
+    requestId: req.id,
+    error: {
+      code: "NOT_FOUND",
+      message:
+        "The requested endpoint does not exist."
+    }
+  });
 
-return res.status(200).json({
-  ok: true,
-  requestId: req.id,
-  cached: false,
-  data: result
 });
 
-
-    } catch (error) {
-
-  if (error.message === "BLOCKED_TARGET") {
-
-    return res.status(403).json({
-      ok: false,
-      requestId: req.id,
-      error: {
-        code: "BLOCKED_TARGET",
-        message:
-          "This URL points to a network location that cannot be audited."
-      }
-    });
-
-  }
-
-  // TIMEOUT
-
-  if (error.message === "AUDIT_TIMEOUT") {
-
-    return res.status(504).json({
-      ok: false,
-      requestId: req.id,
-      error: {
-        code: "AUDIT_TIMEOUT",
-        message:
-          "The target website took too long to respond."
-      }
-    });
-
-  }
-
-  next(error);
-
-}
-
-  }
-);
 
 app.use(errorHandler);
 export default app;
