@@ -30,9 +30,10 @@ app.use(
       "http://localhost:3000"
   })
 );
+app.use(express.json());
 app.use(requestId);
 app.use(requestLogger);
-app.use(express.json());
+
 
 
 app.get("/health", (req, res) => {
@@ -98,72 +99,86 @@ app.post(
         key,
         async () => {
 
+          const cached = getCachedAudit(key);
+
+          if (cached) {
+            return {
+              data: cached,
+              cached: true
+            };
+          }
+
           await auditLimiter.acquire();
 
           try {
 
-            return await auditUrl(
-              validation.url
-            );
+            const auditResult = await auditUrl(validation.url);
 
-          } finally {
+            setCachedAudit(key, auditResult);
 
-            auditLimiter.release();
+            return {
+              data: auditResult,
+              cached: false
+            };
 
-          }
+    } finally {
 
-        }
-      );
+      auditLimiter.release();
 
-      // SAVE RESULT TO CACHE
+    }
 
-      setCachedAudit(key, result);
+  }
+);
 
-      // RETURN SUCCESS
+// SAVE RESULT TO CACHE
 
-      return res.status(200).json({
-        ok: true,
-        requestId: req.id,
-        cached: false,
-        data: result
-      });
+setCachedAudit(key, result);
+
+// RETURN SUCCESS
+
+return res.status(200).json({
+  ok: true,
+  requestId: req.id,
+  cached: false,
+  data: result
+});
 
 
     } catch (error) {
 
-      if (error.message === "BLOCKED_TARGET") {
+  if (error.message === "BLOCKED_TARGET") {
 
-        return res.status(403).json({
-          ok: false,
-          requestId: req.id,
-          error: {
-            code: "BLOCKED_TARGET",
-            message:
-              "This URL points to a network location that cannot be audited."
-          }
-        });
-
+    return res.status(403).json({
+      ok: false,
+      requestId: req.id,
+      error: {
+        code: "BLOCKED_TARGET",
+        message:
+          "This URL points to a network location that cannot be audited."
       }
+    });
 
-      // TIMEOUT
+  }
 
-      if (error.message === "AUDIT_TIMEOUT") {
+  // TIMEOUT
 
-        return res.status(504).json({
-          ok: false,
-          requestId: req.id,
-          error: {
-            code: "AUDIT_TIMEOUT",
-            message:
-              "The target website took too long to respond."
-          }
-        });
+  if (error.message === "AUDIT_TIMEOUT") {
 
+    return res.status(504).json({
+      ok: false,
+      requestId: req.id,
+      error: {
+        code: "AUDIT_TIMEOUT",
+        message:
+          "The target website took too long to respond."
       }
+    });
 
-      next(error);
+  }
 
-    }
+  next(error);
+
+}
 
   }
 );
