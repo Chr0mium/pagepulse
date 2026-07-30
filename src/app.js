@@ -22,13 +22,7 @@ import { auditLimiter } from "./concurrency/audit-limiter.js";
 
 const app = express();
 
-
-// --------------------------------------------------
-// SECURITY MIDDLEWARE
-// --------------------------------------------------
-
 app.use(helmet());
-
 app.use(
   cors({
     origin:
@@ -36,22 +30,10 @@ app.use(
       "http://localhost:3000"
   })
 );
-
-
-// --------------------------------------------------
-// REQUEST MIDDLEWARE
-// --------------------------------------------------
-
 app.use(requestId);
-
 app.use(requestLogger);
-
 app.use(express.json());
 
-
-// --------------------------------------------------
-// HEALTH CHECK
-// --------------------------------------------------
 
 app.get("/health", (req, res) => {
 
@@ -63,11 +45,6 @@ app.get("/health", (req, res) => {
 
 });
 
-
-// --------------------------------------------------
-// AUDIT URL
-// --------------------------------------------------
-
 app.post(
   "/api/v1/audits",
 
@@ -77,23 +54,13 @@ app.post(
 
     try {
 
-      // --------------------------------------------
-      // 1. GET URL FROM REQUEST
-      // --------------------------------------------
-
+      // GET URL FROM REQUEST
       const { url } = req.body;
 
-
-      // --------------------------------------------
-      // 2. VALIDATE URL
-      // --------------------------------------------
-
+      // VALIDATE URL
       const validation = validateUrl(url);
 
-
-      // --------------------------------------------
-      // 3. RETURN ERROR IF INVALID
-      // --------------------------------------------
+      // RETURN ERROR IF INVALID
 
       if (!validation.valid) {
 
@@ -108,18 +75,10 @@ app.post(
 
       }
 
-
-      // --------------------------------------------
-      // 4. CREATE CACHE KEY
-      // --------------------------------------------
-
+      // CREATE CACHE KEY
       const key = createCacheKey(validation.url);
 
-
-      // --------------------------------------------
-      // 5. CHECK CACHE
-      // --------------------------------------------
-
+      // CHECK CACHE
       const cachedResult = getCachedAudit(key);
 
       if (cachedResult) {
@@ -133,10 +92,7 @@ app.post(
 
       }
 
-
-      // --------------------------------------------
-      // 6. RUN AUDIT
-      // --------------------------------------------
+      // RUN AUDIT
 
       const result = await singleFlight(
         key,
@@ -159,17 +115,11 @@ app.post(
         }
       );
 
-
-      // --------------------------------------------
-      // 7. SAVE RESULT TO CACHE
-      // --------------------------------------------
+      // SAVE RESULT TO CACHE
 
       setCachedAudit(key, result);
 
-
-      // --------------------------------------------
-      // 8. RETURN SUCCESS
-      // --------------------------------------------
+      // RETURN SUCCESS
 
       return res.status(200).json({
         ok: true,
@@ -180,11 +130,6 @@ app.post(
 
 
     } catch (error) {
-
-
-      // --------------------------------------------
-      // BLOCKED / INTERNAL TARGET
-      // --------------------------------------------
 
       if (error.message === "BLOCKED_TARGET") {
 
@@ -200,10 +145,7 @@ app.post(
 
       }
 
-
-      // --------------------------------------------
       // TIMEOUT
-      // --------------------------------------------
 
       if (error.message === "AUDIT_TIMEOUT") {
 
@@ -219,11 +161,6 @@ app.post(
 
       }
 
-
-      // --------------------------------------------
-      // SEND UNEXPECTED ERRORS TO ERROR HANDLER
-      // --------------------------------------------
-
       next(error);
 
     }
@@ -231,18 +168,5 @@ app.post(
   }
 );
 
-
-// --------------------------------------------------
-// CENTRAL ERROR HANDLER
-// MUST BE AFTER ALL ROUTES
-// --------------------------------------------------
-
 app.use(errorHandler);
-
-
-// --------------------------------------------------
-// EXPORT APP
-// MUST BE LAST
-// --------------------------------------------------
-
 export default app;
