@@ -170,6 +170,34 @@ app.post(
 
       }
 
+      if (error.message === "TARGET_DNS_FAILED") {
+
+        return res.status(502).json({
+          ok: false,
+          requestId: req.id,
+          error: {
+            code: "TARGET_DNS_FAILED",
+            message:
+              "The target website could not be resolved."
+          }
+        });
+
+      }
+
+      if (error.message === "TOO_MANY_REDIRECTS") {
+
+        return res.status(502).json({
+          ok: false,
+          requestId: req.id,
+          error: {
+            code: "TOO_MANY_REDIRECTS",
+            message:
+              "The target website redirected too many times."
+          }
+        });
+
+      }
+
       next(error);
 
     }
