@@ -24,16 +24,43 @@ const app = express();
 
 app.use(helmet());
 
+
+const allowedOrigins = [
+  process.env.ALLOWED_ORIGIN,
+  "http://localhost:3000"
+].filter(Boolean);
+
+
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error("Origin not allowed by CORS")
+      );
+    },
+
     methods: ["GET", "POST", "OPTIONS"],
+
     allowedHeaders: [
       "Content-Type",
+      "X-Request-ID"
+    ],
+
+    exposedHeaders: [
       "X-Request-ID"
     ]
   })
 );
+
 
 app.use(
   express.json({
