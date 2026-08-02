@@ -26,9 +26,12 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin:
-      process.env.ALLOWED_ORIGIN ||
-      "http://localhost:3000"
+    origin: true,
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "X-Request-ID"
+    ]
   })
 );
 
